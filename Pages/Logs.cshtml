@@ -1,0 +1,37 @@
+@page
+@model NetTester.Pages.LogsModel
+@{
+    ViewData["Title"] = "日志与统计";
+}
+
+<div class="container py-4">
+    <h1 class="mb-4">日志与统计</h1>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="alert alert-info">@statusMessage</div>
+    }
+
+    <div class="d-flex gap-2 mb-3">
+        <form method="post" asp-page-handler="Refresh">
+            <button type="submit" class="btn btn-primary">刷新内容</button>
+        </form>
+        <form method="post" asp-page-handler="Clear" onsubmit="return confirm('确认清空日志与统计数据吗？');">
+            <button type="submit" class="btn btn-danger">清空日志与统计</button>
+        </form>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">network-log.txt</div>
+        <div class="card-body">
+            <pre class="mb-0" style="max-height:320px;overflow:auto;">@(string.IsNullOrWhiteSpace(Model.LogText) ? "(空)" : Model.LogText)</pre>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">network-stats.txt</div>
+        <div class="card-body">
+            <pre class="mb-0" style="max-height:320px;overflow:auto;">@(string.IsNullOrWhiteSpace(Model.StatsText) ? "(空)" : Model.StatsText)</pre>
+        </div>
+    </div>
+</div>

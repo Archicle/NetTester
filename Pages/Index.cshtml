@@ -1,0 +1,97 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "网络检测";
+}
+
+<div class="container py-4">
+    <h1 class="mb-4">NetTester 网络检测</h1>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="alert alert-info">@statusMessage</div>
+    }
+
+    <form method="post" asp-page-handler="SaveConfig" class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">配置</h5>
+            <div class="mb-3">
+                <label asp-for="Ip1" class="form-label">IP1</label>
+                <input asp-for="Ip1" class="form-control" />
+            </div>
+            <div class="mb-3">
+                <label asp-for="Ip2" class="form-label">IP2</label>
+                <input asp-for="Ip2" class="form-control" />
+            </div>
+            <div class="mb-3">
+                <label asp-for="ExternalUrl" class="form-label">外网 URL</label>
+                <input asp-for="ExternalUrl" class="form-control" />
+            </div>
+            <button type="submit" class="btn btn-primary">保存配置</button>
+        </div>
+    </form>
+
+    <div class="mb-3 d-flex gap-2">
+        <form method="post" asp-page-handler="Start">
+            <input type="hidden" asp-for="Ip1" />
+            <input type="hidden" asp-for="Ip2" />
+            <input type="hidden" asp-for="ExternalUrl" />
+            <button type="submit" class="btn btn-success" @(Model.IsRunning ? "disabled" : null)>启动检测</button>
+        </form>
+        <form method="post" asp-page-handler="Stop">
+            <button type="submit" class="btn btn-secondary" @(!Model.IsRunning ? "disabled" : null)>停止检测</button>
+        </form>
+        <form method="post" asp-page-handler="Refresh">
+            <button type="submit" class="btn btn-outline-primary">刷新统计</button>
+        </form>
+    </div>
+
+    <div class="alert @(Model.IsRunning ? "alert-success" : "alert-warning")">
+        当前状态：@(Model.IsRunning ? "运行中" : "已停止")
+    </div>
+
+@section Scripts {
+    <script>
+        setInterval(function () {
+            window.location.reload();
+        }, 3000);
+    </script>
+}
+
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">统计（独立计数）</h5>
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>目标</th>
+                        <th>总数</th>
+                        <th>成功</th>
+                        <th>失败</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>IP1</td>
+                        <td>@Model.Ip1Total</td>
+                        <td>@Model.Ip1Success</td>
+                        <td>@Model.Ip1Failure</td>
+                    </tr>
+                    <tr>
+                        <td>IP2</td>
+                        <td>@Model.Ip2Total</td>
+                        <td>@Model.Ip2Success</td>
+                        <td>@Model.Ip2Failure</td>
+                    </tr>
+                    <tr>
+                        <td>外网</td>
+                        <td>@Model.ExternalTotal</td>
+                        <td>@Model.ExternalSuccess</td>
+                        <td>@Model.ExternalFailure</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="text-muted mb-0">日志文件：network-log.txt；统计快照：network-stats.txt（每分钟）</p>
+        </div>
+    </div>
+</div>
