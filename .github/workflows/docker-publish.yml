@@ -1,0 +1,111 @@
+﻿name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    # 只在版本号改变或 Dockerfile 改变时触发（可选）
+    paths:
+      - 'NetTester.csproj'
+      - 'Dockerfile'
+      - '.github/workflows/docker-publish.yml'
+      - 'Program.cs'
+      - 'Pages/**'
+      - 'Services/**'
+      - 'wwwroot/**'
+  workflow_dispatch: # 允许手动触发
+  release:
+    types: [ published ] # 发布 Release 时自动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # --- 第一步：提取项目信息 ---
+      - name: Extract Project Info
+        id: prep
+        shell: bash
+        run: |
+          # 1. 寻找项目文件
+          PROJECT_FILE=$(find . -maxdepth 1 -name "*.csproj" | head -n 1)
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "❌ 未找到 .csproj 文件"
+            exit 1
+          fi
+          echo "PROJECT_NAME=$(basename "$PROJECT_FILE" .csproj | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+          
+          # 2. 改进后的版本提取逻辑
+          # 先提取包含 Version 标签的行，去掉标签，再去掉空白字符
+          RAW_VERSION=$(grep -E '<(Version|VersionPrefix)>' "$PROJECT_FILE" | head -n 1 | sed -e 's/<[^>]*>//g' | xargs)
+          
+          # 3. 判断并赋值
+          if [ -n "$RAW_VERSION" ]; then
+            echo "✅ 从文件读取到版本: $RAW_VERSION"
+            VERSION=$RAW_VERSION
+          elif git describe --tags --abbrev=0 2>/dev/null; then
+            VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//')
+          else
+            VERSION="1.0.0"
+          fi
+          
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "DATE_TAG=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "GIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Display Build Info
+        run: |
+          echo "📦 Build Information:"
+          echo "  Project: ${{ steps.prep.outputs.PROJECT_NAME }}"
+          echo "  Version: ${{ steps.prep.outputs.VERSION }}"
+          echo "  Date: ${{ steps.prep.outputs.DATE_TAG }}"
+          echo "  Git SHA: ${{ steps.prep.outputs.GIT_SHA }}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # --- 第二步：执行构建并推送多标签镜像 ---
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ steps.prep.outputs.PROJECT_NAME }}:${{ steps.prep.outputs.VERSION }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ steps.prep.outputs.PROJECT_NAME }}:${{ steps.prep.outputs.VERSION }}-${{ steps.prep.outputs.DATE_TAG }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ steps.prep.outputs.PROJECT_NAME }}:${{ steps.prep.outputs.VERSION }}-${{ steps.prep.outputs.GIT_SHA }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ steps.prep.outputs.PROJECT_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # --- 新增 Labels 如下 ---
+          labels: |
+            version=${{ steps.prep.outputs.VERSION }}
+            build-date=${{ steps.prep.outputs.DATE_TAG }}
+            git-sha=${{ steps.prep.outputs.GIT_SHA }}
+            project-name=${{ steps.prep.outputs.PROJECT_NAME }}
+            maintainer=${{ secrets.DOCKERHUB_USERNAME }}
+          # -----------------
+      - name: Build Summary
+        if: always()
+        run: |
+          echo "🎉 构建完成！"
+          echo ""
+          echo "Docker 镜像已推送到 Docker Hub："
+          echo "  📌 版本号: ${{ secrets.DOCKERHUB_USERNAME }}/${{ steps.prep.outputs.PROJECT_NAME }}:${{ steps.prep.outputs.VERSION }}"
+          echo "  📅 日期版本: ${{ secrets.DOCKERHUB_USERNAME }}/${{ steps.prep.outputs.PROJECT_NAME }}:${{ steps.prep.outputs.VERSION }}-${{ steps.prep.outputs.DATE_TAG }}"
+          echo "  🔗 最新版: ${{ secrets.DOCKERHUB_USERNAME }}/${{ steps.prep.outputs.PROJECT_NAME }}:latest"
+          echo ""
+          echo "🚀 快速使用："
+          echo "  docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ steps.prep.outputs.PROJECT_NAME }}:${{ steps.prep.outputs.VERSION }}"
