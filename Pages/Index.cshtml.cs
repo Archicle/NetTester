@@ -19,13 +19,16 @@ namespace NetTester.Pages
         public string IpTargetsText { get; set; } = string.Empty;
 
         [BindProperty]
-        public string ExternalUrl { get; set; } = string.Empty;
+        [Display(Name = "HTTP 列表")]
+        public string HttpTargetsText { get; set; } = string.Empty;
+
+        [BindProperty]
+        public bool EnableIpProbe { get; set; } = true;
+
+        [BindProperty]
+        public bool EnableHttpProbe { get; set; } = true;
 
         public bool IsRunning { get; private set; }
-        public IReadOnlyList<PingTargetState> PingStats { get; private set; } = Array.Empty<PingTargetState>();
-        public long ExternalTotal { get; private set; }
-        public long ExternalSuccess { get; private set; }
-        public long ExternalFailure { get; private set; }
 
         public async Task OnGetAsync()
         {
@@ -34,7 +37,7 @@ namespace NetTester.Pages
 
         public async Task<IActionResult> OnPostSaveConfigAsync()
         {
-            await _networkTesterService.SaveConfigAsync(ParseTargets(IpTargetsText), ExternalUrl);
+            await _networkTesterService.SaveConfigAsync(ParseTargets(IpTargetsText), ParseTargets(HttpTargetsText), EnableIpProbe, EnableHttpProbe);
             await LoadStateAsync();
             TempData["StatusMessage"] = "配置已保存。";
             return Page();
@@ -42,7 +45,7 @@ namespace NetTester.Pages
 
         public async Task<IActionResult> OnPostStartAsync()
         {
-            await _networkTesterService.SaveConfigAsync(ParseTargets(IpTargetsText), ExternalUrl);
+            await _networkTesterService.SaveConfigAsync(ParseTargets(IpTargetsText), ParseTargets(HttpTargetsText), EnableIpProbe, EnableHttpProbe);
             _networkTesterService.StartTesting();
             await LoadStateAsync();
             TempData["StatusMessage"] = "检测已启动。";
@@ -57,23 +60,14 @@ namespace NetTester.Pages
             return Page();
         }
 
-        public async Task<IActionResult> OnPostRefreshAsync()
-        {
-            await LoadStateAsync();
-            TempData["StatusMessage"] = "统计已刷新。";
-            return Page();
-        }
-
         private async Task LoadStateAsync()
         {
             var state = await _networkTesterService.GetStateAsync();
             IpTargetsText = string.Join(Environment.NewLine, state.IpTargets);
-            ExternalUrl = state.ExternalUrl;
+            HttpTargetsText = string.Join(Environment.NewLine, state.HttpTargets);
+            EnableIpProbe = state.EnableIpProbe;
+            EnableHttpProbe = state.EnableHttpProbe;
             IsRunning = state.IsRunning;
-            PingStats = state.PingStats;
-            ExternalTotal = state.ExternalTotal;
-            ExternalSuccess = state.ExternalSuccess;
-            ExternalFailure = state.ExternalFailure;
         }
 
         private static IReadOnlyList<string> ParseTargets(string text)

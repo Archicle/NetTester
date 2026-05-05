@@ -1,0 +1,142 @@
+@page
+@model NetTester.Pages.StatsModel
+@{
+    ViewData["Title"] = "统计";
+}
+
+<div class="container py-4">
+    <h1 class="mb-4">统计</h1>
+
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="alert alert-info">@statusMessage</div>
+    }
+
+    <div class="mb-3 d-flex gap-2 align-items-center">
+        <form method="post" asp-page-handler="Refresh" class="d-flex gap-2 align-items-center">
+            <input type="hidden" name="autoRefresh" value="@Model.AutoRefresh.ToString().ToLowerInvariant()" />
+            <button type="submit" class="btn btn-outline-primary">刷新统计</button>
+        </form>
+
+        <form method="get" class="d-flex gap-2 align-items-center">
+            <input type="hidden" name="autoRefresh" value="@((!Model.AutoRefresh).ToString().ToLowerInvariant())" />
+            <button type="submit" class="btn @(Model.AutoRefresh ? "btn-warning" : "btn-success")">
+                @(Model.AutoRefresh ? "关闭自动刷新" : "开启自动刷新")
+            </button>
+        </form>
+
+        <span class="text-muted">自动刷新：@(Model.AutoRefresh ? "开启（3秒）" : "关闭")</span>
+    </div>
+
+    <div class="alert @(Model.IsRunning ? "alert-success" : "alert-warning")">
+        当前状态：@(Model.IsRunning ? "运行中" : "已停止")；IP探测：@(Model.EnableIpProbe ? "启用" : "禁用")；HTTP探测：@(Model.EnableHttpProbe ? "启用" : "禁用")
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">IP 汇总</div>
+                <div class="card-body">
+                    <div>发送总数：<strong>@Model.IpSentTotal</strong></div>
+                    <div>成功总数：<strong>@Model.IpReceivedTotal</strong></div>
+                    <div>失败总数：<strong>@Model.IpFailureTotal</strong></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header">HTTP 汇总</div>
+                <div class="card-body">
+                    <div>发送总数：<strong>@Model.HttpSentTotal</strong></div>
+                    <div>成功总数：<strong>@Model.HttpReceivedTotal</strong></div>
+                    <div>失败总数：<strong>@Model.HttpFailureTotal</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">IP 统计（独立计数）</h5>
+            <table class="table table-bordered mb-0">
+                <thead>
+                    <tr>
+                        <th>目标</th>
+                        <th>发送</th>
+                        <th>成功</th>
+                        <th>失败</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.PingStats.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">暂无 IP 目标</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var item in Model.PingStats)
+                        {
+                            <tr>
+                                <td>@item.Ip</td>
+                                <td>@item.Total</td>
+                                <td>@item.Success</td>
+                                <td>@item.Failure</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">HTTP 统计（独立计数）</h5>
+            <table class="table table-bordered mb-0">
+                <thead>
+                    <tr>
+                        <th>目标</th>
+                        <th>发送</th>
+                        <th>成功</th>
+                        <th>失败</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.HttpStats.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">暂无 HTTP 目标</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var item in Model.HttpStats)
+                        {
+                            <tr>
+                                <td>@item.Url</td>
+                                <td>@item.Total</td>
+                                <td>@item.Success</td>
+                                <td>@item.Failure</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @if (Model.AutoRefresh)
+    {
+        <script>
+            setTimeout(function () {
+                const url = new URL(window.location.href);
+                url.searchParams.set('autoRefresh', 'true');
+                window.location.replace(url.toString());
+            }, 3000);
+        </script>
+    }
+}

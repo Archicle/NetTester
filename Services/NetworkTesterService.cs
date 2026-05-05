@@ -14,13 +14,12 @@ public sealed class NetworkTesterService : BackgroundService
 
     private List<string> _ipTargets = ["192.168.1.1", "192.168.1.254"];
     private readonly ConcurrentDictionary<string, PingCounter> _pingCounters = new(StringComparer.OrdinalIgnoreCase);
-    private string _externalUrl = "https://www.baidu.com";
+    private List<string> _httpTargets = ["https://www.baidu.com"];
+    private readonly ConcurrentDictionary<string, HttpCounter> _httpCounters = new(StringComparer.OrdinalIgnoreCase);
+    private bool _enableIpProbe = true;
+    private bool _enableHttpProbe = true;
 
     private volatile bool _isRunning;
-
-    private long _externalTotalCount;
-    private long _externalSuccessCount;
-    private long _externalFailureCount;
 
     private DateTime _lastStatsWriteUtc = DateTime.UtcNow;
 
@@ -35,6 +34,7 @@ public sealed class NetworkTesterService : BackgroundService
         _logger = logger;
         LoadConfig();
         SyncPingCounters(_ipTargets);
+        SyncHttpCounters(_httpTargets);
     }
 
     public async Task<TesterState> GetStateAsync()
@@ -52,11 +52,11 @@ public sealed class NetworkTesterService : BackgroundService
             {
                 IpTargets = _ipTargets.ToList(),
                 PingStats = pingStats,
-                ExternalUrl = _externalUrl,
+                HttpTargets = _httpTargets.ToList(),
+                HttpStats = _httpTargets.Select(url => _httpCounters.GetOrAdd(url, _ => new HttpCounter()).ToState(url)).ToList(),
+                EnableIpProbe = _enableIpProbe,
+                EnableHttpProbe = _enableHttpProbe,
                 IsRunning = _isRunning,
-                ExternalTotal = Interlocked.Read(ref _externalTotalCount),
-                ExternalSuccess = Interlocked.Read(ref _externalSuccessCount),
-                ExternalFailure = Interlocked.Read(ref _externalFailureCount)
             };
         }
         finally
@@ -65,18 +65,23 @@ public sealed class NetworkTesterService : BackgroundService
         }
     }
 
-    public async Task SaveConfigAsync(IReadOnlyList<string> ipTargets, string externalUrl)
+    public async Task SaveConfigAsync(IReadOnlyList<string> ipTargets, IReadOnlyList<string> httpTargets, bool enableIpProbe, bool enableHttpProbe)
     {
         await _stateLock.WaitAsync();
         try
         {
             _ipTargets = NormalizeTargets(ipTargets);
             SyncPingCounters(_ipTargets);
-            _externalUrl = externalUrl.Trim();
+            _httpTargets = NormalizeTargets(httpTargets);
+            SyncHttpCounters(_httpTargets);
+            _enableIpProbe = enableIpProbe;
+            _enableHttpProbe = enableHttpProbe;
             var lines = new[]
             {
                 $"IpTargets={string.Join(',', _ipTargets)}",
-                $"ExternalUrl={_externalUrl}"
+                $"HttpTargets={string.Join(',', _httpTargets)}",
+                $"EnableIpProbe={_enableIpProbe}",
+                $"EnableHttpProbe={_enableHttpProbe}"
             };
             await File.WriteAllLinesAsync(ConfigFilePath, lines);
         }
@@ -204,11 +209,14 @@ public sealed class NetworkTesterService : BackgroundService
                 continue;
             }
 
-            var targets = _ipTargets;
-            if (targets.Count > 0)
+            if (_enableIpProbe)
             {
-                var pingTasks = targets.Select(ip => CheckPingAsync(ip, token));
-                await Task.WhenAll(pingTasks);
+                var targets = _ipTargets;
+                if (targets.Count > 0)
+                {
+                    var pingTasks = targets.Select(ip => CheckPingAsync(ip, token));
+                    await Task.WhenAll(pingTasks);
+                }
             }
 
             await TryWritePeriodicStatsAsync();
@@ -219,12 +227,19 @@ public sealed class NetworkTesterService : BackgroundService
     {
         while (await timer.WaitForNextTickAsync(token))
         {
-            if (!_isRunning)
+            if (!_isRunning || !_enableHttpProbe)
             {
                 continue;
             }
 
-            await CheckExternalAsync(_externalUrl, token);
+            var targets = _httpTargets;
+            if (targets.Count == 0)
+            {
+                continue;
+            }
+
+            var checkTasks = targets.Select(url => CheckExternalAsync(url, token));
+            await Task.WhenAll(checkTasks);
         }
     }
 
@@ -264,7 +279,7 @@ public sealed class NetworkTesterService : BackgroundService
             return;
         }
 
-        IncrementExternalSent();
+        IncrementHttpSent(url);
         const int timeoutMs = 2800;
 
         try
@@ -278,22 +293,22 @@ public sealed class NetworkTesterService : BackgroundService
 
             if ((int)response.StatusCode >= 400)
             {
-                IncrementExternalResult(false);
-                await WriteLogAsync($"外网检测失败，URL: {url}，HTTP 状态码: {(int)response.StatusCode}");
+                IncrementHttpResult(url, false);
+                await WriteLogAsync($"[HTTP:{url}] 外网检测失败，HTTP 状态码: {(int)response.StatusCode}");
                 return;
             }
 
-            IncrementExternalResult(true);
+            IncrementHttpResult(url, true);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
-            IncrementExternalResult(false);
-            await WriteLogAsync($"外网检测异常，URL: {url}，错误: 外网检测超时（>{timeoutMs}ms）");
+            IncrementHttpResult(url, false);
+            await WriteLogAsync($"[HTTP:{url}] 外网检测异常，错误: 外网检测超时（>{timeoutMs}ms）");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            IncrementExternalResult(false);
-            await WriteLogAsync($"外网检测异常，URL: {url}，错误: {ex.Message}");
+            IncrementHttpResult(url, false);
+            await WriteLogAsync($"[HTTP:{url}] 外网检测异常，错误: {ex.Message}");
         }
     }
 
@@ -326,20 +341,22 @@ public sealed class NetworkTesterService : BackgroundService
         Interlocked.Increment(ref counter.FailureCount);
     }
 
-    private void IncrementExternalSent()
+    private void IncrementHttpSent(string url)
     {
-        Interlocked.Increment(ref _externalTotalCount);
+        var counter = _httpCounters.GetOrAdd(url, _ => new HttpCounter());
+        Interlocked.Increment(ref counter.TotalCount);
     }
 
-    private void IncrementExternalResult(bool success)
+    private void IncrementHttpResult(string url, bool success)
     {
+        var counter = _httpCounters.GetOrAdd(url, _ => new HttpCounter());
         if (success)
         {
-            Interlocked.Increment(ref _externalSuccessCount);
+            Interlocked.Increment(ref counter.SuccessCount);
             return;
         }
 
-        Interlocked.Increment(ref _externalFailureCount);
+        Interlocked.Increment(ref counter.FailureCount);
     }
 
     private static List<string> NormalizeTargets(IEnumerable<string> targets)
@@ -364,6 +381,23 @@ public sealed class NetworkTesterService : BackgroundService
             if (!activeSet.Contains(key))
             {
                 _pingCounters.TryRemove(key, out _);
+            }
+        }
+    }
+
+    private void SyncHttpCounters(IReadOnlyCollection<string> targets)
+    {
+        foreach (var url in targets)
+        {
+            _httpCounters.GetOrAdd(url, _ => new HttpCounter());
+        }
+
+        var activeSet = targets.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in _httpCounters.Keys)
+        {
+            if (!activeSet.Contains(key))
+            {
+                _httpCounters.TryRemove(key, out _);
             }
         }
     }
@@ -408,7 +442,23 @@ public sealed class NetworkTesterService : BackgroundService
             }
         }
 
-        _externalUrl = ReadConfig(config, "ExternalUrl", _externalUrl);
+        var httpTargetsConfig = ReadConfig(config, "HttpTargets", string.Empty);
+        if (!string.IsNullOrWhiteSpace(httpTargetsConfig))
+        {
+            _httpTargets = NormalizeTargets(ParseTargets(httpTargetsConfig));
+        }
+        else
+        {
+            var legacyExternalUrl = ReadConfig(config, "ExternalUrl", string.Empty);
+            var fallbackHttpTargets = NormalizeTargets([legacyExternalUrl]);
+            if (fallbackHttpTargets.Count > 0)
+            {
+                _httpTargets = fallbackHttpTargets;
+            }
+        }
+
+        _enableIpProbe = ReadBoolConfig(config, "EnableIpProbe", true);
+        _enableHttpProbe = ReadBoolConfig(config, "EnableHttpProbe", true);
     }
 
     private static IEnumerable<string> ParseTargets(string value)
@@ -424,6 +474,16 @@ public sealed class NetworkTesterService : BackgroundService
         }
 
         return value;
+    }
+
+    private static bool ReadBoolConfig(IReadOnlyDictionary<string, string> config, string key, bool defaultValue)
+    {
+        if (!config.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+        {
+            return defaultValue;
+        }
+
+        return bool.TryParse(value, out var parsed) ? parsed : defaultValue;
     }
 
     private async Task WriteLogAsync(string message)
@@ -444,12 +504,18 @@ public sealed class NetworkTesterService : BackgroundService
             return $"{ip}(总:{total}, 成功:{success}, 失败:{failure})";
         }).ToList();
 
-        var externalTotal = Interlocked.Read(ref _externalTotalCount);
-        var externalSuccess = Interlocked.Read(ref _externalSuccessCount);
-        var externalFailure = Interlocked.Read(ref _externalFailureCount);
+        var httpParts = _httpTargets.Select(url =>
+        {
+            var counter = _httpCounters.GetOrAdd(url, _ => new HttpCounter());
+            var total = Interlocked.Read(ref counter.TotalCount);
+            var success = Interlocked.Read(ref counter.SuccessCount);
+            var failure = Interlocked.Read(ref counter.FailureCount);
+            return $"{url}(总:{total}, 成功:{success}, 失败:{failure})";
+        }).ToList();
 
         var pingSummary = pingParts.Count > 0 ? string.Join("; ", pingParts) : "无IP目标";
-        var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {pingSummary}; 外网(总:{externalTotal}, 成功:{externalSuccess}, 失败:{externalFailure})";
+        var httpSummary = httpParts.Count > 0 ? string.Join("; ", httpParts) : "无HTTP目标";
+        var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] IP探测[{(_enableIpProbe ? "启用" : "禁用")}]: {pingSummary}; HTTP探测[{(_enableHttpProbe ? "启用" : "禁用")}]: {httpSummary}";
         File.AppendAllText(StatsFilePath, line + Environment.NewLine);
     }
 
@@ -490,22 +556,48 @@ public sealed class NetworkTesterService : BackgroundService
             };
         }
     }
+
+    private sealed class HttpCounter
+    {
+        public long TotalCount;
+        public long SuccessCount;
+        public long FailureCount;
+
+        public HttpTargetState ToState(string url)
+        {
+            return new HttpTargetState
+            {
+                Url = url,
+                Total = Interlocked.Read(ref TotalCount),
+                Success = Interlocked.Read(ref SuccessCount),
+                Failure = Interlocked.Read(ref FailureCount)
+            };
+        }
+    }
 }
 
 public sealed class TesterState
 {
     public IReadOnlyList<string> IpTargets { get; init; } = Array.Empty<string>();
     public IReadOnlyList<PingTargetState> PingStats { get; init; } = Array.Empty<PingTargetState>();
-    public string ExternalUrl { get; init; } = string.Empty;
+    public IReadOnlyList<string> HttpTargets { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<HttpTargetState> HttpStats { get; init; } = Array.Empty<HttpTargetState>();
+    public bool EnableIpProbe { get; init; }
+    public bool EnableHttpProbe { get; init; }
     public bool IsRunning { get; init; }
-    public long ExternalTotal { get; init; }
-    public long ExternalSuccess { get; init; }
-    public long ExternalFailure { get; init; }
 }
 
 public sealed class PingTargetState
 {
     public string Ip { get; init; } = string.Empty;
+    public long Total { get; init; }
+    public long Success { get; init; }
+    public long Failure { get; init; }
+}
+
+public sealed class HttpTargetState
+{
+    public string Url { get; init; } = string.Empty;
     public long Total { get; init; }
     public long Success { get; init; }
     public long Failure { get; init; }

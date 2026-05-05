@@ -28,7 +28,7 @@ public class LogsModel : PageModel
     public async Task<IActionResult> OnPostClearAsync()
     {
         await _networkTesterService.ClearLogAndStatsAsync();
-        TempData["StatusMessage"] = "日志与统计数据已清空。";
+        TempData["StatusMessage"] = "日志数据已清空。";
         await LoadAsync(0);
         return Page();
     }

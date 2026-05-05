@@ -1,11 +1,11 @@
 @page
 @model NetTester.Pages.LogsModel
 @{
-    ViewData["Title"] = "日志与统计";
+    ViewData["Title"] = "日志";
 }
 
 <div class="container py-4">
-    <h1 class="mb-4">日志与统计</h1>
+    <h1 class="mb-4">日志</h1>
 
     @if (TempData["StatusMessage"] is string statusMessage)
     {
@@ -17,8 +17,8 @@
             <input type="hidden" name="page" value="@Model.LogPage" />
             <button type="submit" class="btn btn-primary">刷新内容</button>
         </form>
-        <form method="post" asp-page-handler="Clear" onsubmit="return confirm('确认清空日志与统计数据吗？');">
-            <button type="submit" class="btn btn-danger">清空日志与统计</button>
+        <form method="post" asp-page-handler="Clear" onsubmit="return confirm('确认清空日志数据吗？');">
+            <button type="submit" class="btn btn-danger">清空日志</button>
         </form>
     </div>
 

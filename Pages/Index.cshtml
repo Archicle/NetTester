@@ -18,11 +18,20 @@
             <div class="mb-3">
                 <label asp-for="IpTargetsText" class="form-label"></label>
                 <textarea asp-for="IpTargetsText" class="form-control" rows="6" placeholder="每行一个 IP，支持逗号/分号分隔"></textarea>
-                <div class="form-text">支持增删改查：直接编辑列表后保存即可。</div>
+                <div class="form-text">每行一个 IP，支持逗号/分号分隔</div>
             </div>
             <div class="mb-3">
-                <label asp-for="ExternalUrl" class="form-label">外网 URL</label>
-                <input asp-for="ExternalUrl" class="form-control" />
+                <label asp-for="HttpTargetsText" class="form-label"></label>
+                <textarea asp-for="HttpTargetsText" class="form-control" rows="6" placeholder="每行一个 HTTP/HTTPS URL，支持逗号/分号分隔"></textarea>
+                <div class="form-text">每行一个 Url，包括http://或者https://以及端口号，建议从浏览器地址栏复制</div>
+            </div>
+            <div class="form-check mb-2">
+                <input asp-for="EnableIpProbe" class="form-check-input" />
+                <label asp-for="EnableIpProbe" class="form-check-label">启用 IP 探测</label>
+            </div>
+            <div class="form-check mb-3">
+                <input asp-for="EnableHttpProbe" class="form-check-input" />
+                <label asp-for="EnableHttpProbe" class="form-check-label">启用 HTTP 探测</label>
             </div>
             <button type="submit" class="btn btn-primary">保存配置</button>
         </div>
@@ -31,69 +40,17 @@
     <div class="mb-3 d-flex gap-2">
         <form method="post" asp-page-handler="Start">
             <input type="hidden" asp-for="IpTargetsText" />
-            <input type="hidden" asp-for="ExternalUrl" />
+            <input type="hidden" asp-for="HttpTargetsText" />
+            <input type="hidden" asp-for="EnableIpProbe" />
+            <input type="hidden" asp-for="EnableHttpProbe" />
             <button type="submit" class="btn btn-success" @(Model.IsRunning ? "disabled" : null)>启动检测</button>
         </form>
         <form method="post" asp-page-handler="Stop">
             <button type="submit" class="btn btn-secondary" @(!Model.IsRunning ? "disabled" : null)>停止检测</button>
         </form>
-        <form method="post" asp-page-handler="Refresh">
-            <button type="submit" class="btn btn-outline-primary">刷新统计</button>
-        </form>
     </div>
 
     <div class="alert @(Model.IsRunning ? "alert-success" : "alert-warning")">
         当前状态：@(Model.IsRunning ? "运行中" : "已停止")
-    </div>
-
-@section Scripts {
-    <script>
-        setInterval(function () {
-            window.location.reload();
-        }, 3000);
-    </script>
-}
-
-    <div class="card">
-        <div class="card-body">
-            <h5 class="card-title">统计（独立计数）</h5>
-            <table class="table table-bordered">
-                <thead>
-                    <tr>
-                        <th>目标</th>
-                        <th>总数</th>
-                        <th>成功</th>
-                        <th>失败</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if (Model.PingStats.Count == 0)
-                    {
-                        <tr>
-                            <td colspan="4" class="text-center text-muted">暂无 IP 目标</td>
-                        </tr>
-                    }
-                    else
-                    {
-                        @foreach (var item in Model.PingStats)
-                        {
-                            <tr>
-                                <td>@item.Ip</td>
-                                <td>@item.Total</td>
-                                <td>@item.Success</td>
-                                <td>@item.Failure</td>
-                            </tr>
-                        }
-                    }
-                    <tr>
-                        <td>外网</td>
-                        <td>@Model.ExternalTotal</td>
-                        <td>@Model.ExternalSuccess</td>
-                        <td>@Model.ExternalFailure</td>
-                    </tr>
-                </tbody>
-            </table>
-            <p class="text-muted mb-0">日志文件：network-log.txt；统计快照：network-stats.txt（每分钟）</p>
-        </div>
     </div>
 </div>
