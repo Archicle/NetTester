@@ -7,7 +7,9 @@
     <UserSecretsId>53247155-49aa-438f-9507-38bb477adfeb</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
+    <OutputType>Exe</OutputType>
+    <PlatformTarget>x86</PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>
