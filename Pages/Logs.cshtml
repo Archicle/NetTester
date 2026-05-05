@@ -14,6 +14,7 @@
 
     <div class="d-flex gap-2 mb-3">
         <form method="post" asp-page-handler="Refresh">
+            <input type="hidden" name="page" value="@Model.LogPage" />
             <button type="submit" class="btn btn-primary">刷新内容</button>
         </form>
         <form method="post" asp-page-handler="Clear" onsubmit="return confirm('确认清空日志与统计数据吗？');">
@@ -24,12 +25,22 @@
     <div class="card mb-3">
         <div class="card-header">network-log.txt</div>
         <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <small class="text-muted">当前页：第 @(Model.LogPage + 1) 页（每页 200 行，按最新日志倒序分页）</small>
+                @if (Model.HasMoreLogs)
+                {
+                    <form method="post" asp-page-handler="LoadMore">
+                        <input type="hidden" name="page" value="@Model.LogPage" />
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">加载更早日志</button>
+                    </form>
+                }
+            </div>
             <pre class="mb-0" style="max-height:320px;overflow:auto;">@(string.IsNullOrWhiteSpace(Model.LogText) ? "(空)" : Model.LogText)</pre>
         </div>
     </div>
 
     <div class="card">
-        <div class="card-header">network-stats.txt</div>
+        <div class="card-header">network-stats.txt（最近 300 行）</div>
         <div class="card-body">
             <pre class="mb-0" style="max-height:320px;overflow:auto;">@(string.IsNullOrWhiteSpace(Model.StatsText) ? "(空)" : Model.StatsText)</pre>
         </div>

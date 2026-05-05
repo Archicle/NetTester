@@ -16,12 +16,9 @@
         <div class="card-body">
             <h5 class="card-title">配置</h5>
             <div class="mb-3">
-                <label asp-for="Ip1" class="form-label">IP1</label>
-                <input asp-for="Ip1" class="form-control" />
-            </div>
-            <div class="mb-3">
-                <label asp-for="Ip2" class="form-label">IP2</label>
-                <input asp-for="Ip2" class="form-control" />
+                <label asp-for="IpTargetsText" class="form-label"></label>
+                <textarea asp-for="IpTargetsText" class="form-control" rows="6" placeholder="每行一个 IP，支持逗号/分号分隔"></textarea>
+                <div class="form-text">支持增删改查：直接编辑列表后保存即可。</div>
             </div>
             <div class="mb-3">
                 <label asp-for="ExternalUrl" class="form-label">外网 URL</label>
@@ -33,8 +30,7 @@
 
     <div class="mb-3 d-flex gap-2">
         <form method="post" asp-page-handler="Start">
-            <input type="hidden" asp-for="Ip1" />
-            <input type="hidden" asp-for="Ip2" />
+            <input type="hidden" asp-for="IpTargetsText" />
             <input type="hidden" asp-for="ExternalUrl" />
             <button type="submit" class="btn btn-success" @(Model.IsRunning ? "disabled" : null)>启动检测</button>
         </form>
@@ -71,18 +67,24 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        <td>IP1</td>
-                        <td>@Model.Ip1Total</td>
-                        <td>@Model.Ip1Success</td>
-                        <td>@Model.Ip1Failure</td>
-                    </tr>
-                    <tr>
-                        <td>IP2</td>
-                        <td>@Model.Ip2Total</td>
-                        <td>@Model.Ip2Success</td>
-                        <td>@Model.Ip2Failure</td>
-                    </tr>
+                    @if (Model.PingStats.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">暂无 IP 目标</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var item in Model.PingStats)
+                        {
+                            <tr>
+                                <td>@item.Ip</td>
+                                <td>@item.Total</td>
+                                <td>@item.Success</td>
+                                <td>@item.Failure</td>
+                            </tr>
+                        }
+                    }
                     <tr>
                         <td>外网</td>
                         <td>@Model.ExternalTotal</td>

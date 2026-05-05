@@ -7,6 +7,8 @@ namespace NetTester.Pages;
 public class LogsModel : PageModel
 {
     private readonly NetworkTesterService _networkTesterService;
+    private const int LogPageSize = 200;
+    private const int StatsMaxLines = 300;
 
     public LogsModel(NetworkTesterService networkTesterService)
     {
@@ -15,30 +17,42 @@ public class LogsModel : PageModel
 
     public string LogText { get; private set; } = string.Empty;
     public string StatsText { get; private set; } = string.Empty;
+    public int LogPage { get; private set; }
+    public bool HasMoreLogs { get; private set; }
 
-    public async Task OnGetAsync()
+    public async Task OnGetAsync(int page = 0)
     {
-        await LoadAsync();
+        await LoadAsync(page);
     }
 
     public async Task<IActionResult> OnPostClearAsync()
     {
         await _networkTesterService.ClearLogAndStatsAsync();
         TempData["StatusMessage"] = "日志与统计数据已清空。";
-        await LoadAsync();
+        await LoadAsync(0);
         return Page();
     }
 
-    public async Task<IActionResult> OnPostRefreshAsync()
+    public async Task<IActionResult> OnPostRefreshAsync(int page = 0)
     {
-        await LoadAsync();
+        await LoadAsync(page);
         TempData["StatusMessage"] = "内容已刷新。";
         return Page();
     }
 
-    private async Task LoadAsync()
+    public async Task<IActionResult> OnPostLoadMoreAsync(int page = 0)
     {
-        LogText = await _networkTesterService.ReadLogTextAsync();
-        StatsText = await _networkTesterService.ReadStatsTextAsync();
+        await LoadAsync(page + 1);
+        return Page();
+    }
+
+    private async Task LoadAsync(int page)
+    {
+        var logPage = await _networkTesterService.ReadLogPageAsync(page, LogPageSize);
+        LogText = logPage.Text;
+        HasMoreLogs = logPage.HasMore;
+        LogPage = logPage.Page;
+
+        StatsText = await _networkTesterService.ReadStatsTailTextAsync(StatsMaxLines);
     }
 }

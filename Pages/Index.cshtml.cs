@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using NetTester.Services;
+using System.ComponentModel.DataAnnotations;
 
 namespace NetTester.Pages
 {
@@ -14,21 +15,14 @@ namespace NetTester.Pages
         }
 
         [BindProperty]
-        public string Ip1 { get; set; } = string.Empty;
-
-        [BindProperty]
-        public string Ip2 { get; set; } = string.Empty;
+        [Display(Name = "IP 列表")]
+        public string IpTargetsText { get; set; } = string.Empty;
 
         [BindProperty]
         public string ExternalUrl { get; set; } = string.Empty;
 
         public bool IsRunning { get; private set; }
-        public long Ip1Total { get; private set; }
-        public long Ip1Success { get; private set; }
-        public long Ip1Failure { get; private set; }
-        public long Ip2Total { get; private set; }
-        public long Ip2Success { get; private set; }
-        public long Ip2Failure { get; private set; }
+        public IReadOnlyList<PingTargetState> PingStats { get; private set; } = Array.Empty<PingTargetState>();
         public long ExternalTotal { get; private set; }
         public long ExternalSuccess { get; private set; }
         public long ExternalFailure { get; private set; }
@@ -40,7 +34,7 @@ namespace NetTester.Pages
 
         public async Task<IActionResult> OnPostSaveConfigAsync()
         {
-            await _networkTesterService.SaveConfigAsync(Ip1, Ip2, ExternalUrl);
+            await _networkTesterService.SaveConfigAsync(ParseTargets(IpTargetsText), ExternalUrl);
             await LoadStateAsync();
             TempData["StatusMessage"] = "配置已保存。";
             return Page();
@@ -48,7 +42,7 @@ namespace NetTester.Pages
 
         public async Task<IActionResult> OnPostStartAsync()
         {
-            await _networkTesterService.SaveConfigAsync(Ip1, Ip2, ExternalUrl);
+            await _networkTesterService.SaveConfigAsync(ParseTargets(IpTargetsText), ExternalUrl);
             _networkTesterService.StartTesting();
             await LoadStateAsync();
             TempData["StatusMessage"] = "检测已启动。";
@@ -73,19 +67,26 @@ namespace NetTester.Pages
         private async Task LoadStateAsync()
         {
             var state = await _networkTesterService.GetStateAsync();
-            Ip1 = state.Ip1;
-            Ip2 = state.Ip2;
+            IpTargetsText = string.Join(Environment.NewLine, state.IpTargets);
             ExternalUrl = state.ExternalUrl;
             IsRunning = state.IsRunning;
-            Ip1Total = state.Ip1Total;
-            Ip1Success = state.Ip1Success;
-            Ip1Failure = state.Ip1Failure;
-            Ip2Total = state.Ip2Total;
-            Ip2Success = state.Ip2Success;
-            Ip2Failure = state.Ip2Failure;
+            PingStats = state.PingStats;
             ExternalTotal = state.ExternalTotal;
             ExternalSuccess = state.ExternalSuccess;
             ExternalFailure = state.ExternalFailure;
+        }
+
+        private static IReadOnlyList<string> ParseTargets(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<string>();
+            }
+
+            return text
+                .Split(['\r', '\n', ',', ';', '|', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
     }
 }
