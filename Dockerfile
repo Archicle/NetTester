@@ -5,8 +5,11 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 # --- 修改部分：安装 ping 工具 ---
 USER root
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends iputils-ping && \
+    apt-get install -y --no-install-recommends iputils-ping tzdata && \
+    ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo Asia/Shanghai > /etc/timezone && \
     rm -rf /var/lib/apt/lists/*
+ENV TZ=Asia/Shanghai
 # --- 修改结束 ---
 USER $APP_UID
 WORKDIR /app
